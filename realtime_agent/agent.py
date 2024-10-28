@@ -25,18 +25,20 @@ def _monitor_queue_size(queue: asyncio.Queue, queue_name: str, threshold: int = 
         logger.warning(f"Queue {queue_name} size exceeded {threshold}: current size {queue_size}")
 
 
-async def wait_for_remote_user(channel: Channel) -> int:
+async def wait_for_remote_user(channel: Channel, target_user_id: int) -> int:
+    logger.info(f"Waiting for remote user to join, target user: {target_user_id}")
     remote_users = list(channel.remote_users.keys())
-    if len(remote_users) > 0:
-        return remote_users[0]
+    if str(target_user_id) in remote_users:
+        logger.info(f"Target user {target_user_id} already joined")
+        return str(target_user_id)
 
     future = asyncio.Future[int]()
 
-    channel.once("user_joined", lambda conn, user_id: future.set_result(user_id))
+    channel.once("user_joined", lambda conn, user_id: future.set_result(user_id) if user_id == target_user_id else None)
 
     try:
         # Wait for the remote user with a timeout of 30 seconds
-        remote_user = await asyncio.wait_for(future, timeout=15.0)
+        remote_user = await asyncio.wait_for(future, timeout=30.0)
         return remote_user
     except KeyboardInterrupt:
         future.cancel()
@@ -58,6 +60,8 @@ class RealtimeKitAgent:
     channel: Channel
     connection: RealtimeApiConnection
     audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
+    input_audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
+    is_agent_busy: bool = False
 
     message_queue: asyncio.Queue[ResponseAudioTranscriptDelta] = (
         asyncio.Queue()
@@ -77,6 +81,7 @@ class RealtimeKitAgent:
         options: RtcOptions,
         inference_config: InferenceConfig,
         tools: ToolContext | None,
+        target_user_id: int,
     ) -> None:
         channel = engine.create_channel(options)
         await channel.connect()
@@ -117,6 +122,7 @@ class RealtimeKitAgent:
                     connection=connection,
                     tools=tools,
                     channel=channel,
+                    target_user_id=target_user_id,
                 )
                 await agent.run()
 
@@ -130,6 +136,7 @@ class RealtimeKitAgent:
         connection: RealtimeApiConnection,
         tools: ToolContext | None,
         channel: Channel,
+        target_user_id: int,
     ) -> None:
         self.connection = connection
         self.tools = tools
@@ -137,6 +144,7 @@ class RealtimeKitAgent:
         self.channel = channel
         self.subscribe_user = None
         self.write_pcm = os.environ.get("WRITE_AGENT_PCM", "false") == "true"
+        self.target_user_id = target_user_id
         logger.info(f"Write PCM: {self.write_pcm}")
 
     async def run(self) -> None:
@@ -149,8 +157,7 @@ class RealtimeKitAgent:
                         exc_info=t.exception(),
                     )
 
-            logger.info("Waiting for remote user to join")
-            self.subscribe_user = await wait_for_remote_user(self.channel)
+            self.subscribe_user = await wait_for_remote_user(self.channel,self.target_user_id)
             logger.info(f"Subscribing to user {self.subscribe_user}")
             await self.channel.subscribe_audio(self.subscribe_user)
 
@@ -192,6 +199,7 @@ class RealtimeKitAgent:
 
     async def rtc_to_model(self) -> None:
         while self.subscribe_user is None or self.channel.get_audio_frames(self.subscribe_user) is None:
+            logger.info("Waiting for audio frames")
             await asyncio.sleep(0.1)
 
         audio_frames = self.channel.get_audio_frames(self.subscribe_user)
@@ -201,12 +209,18 @@ class RealtimeKitAgent:
 
         try:
             async for audio_frame in audio_frames:
+                # logger.info(f"Received audio frame")
                 # Process received audio (send to model)
-                _monitor_queue_size(self.audio_queue, "audio_queue")
-                await self.connection.send_audio_data(audio_frame.data)
+                if(not self.is_agent_busy):
+                    _monitor_queue_size(self.audio_queue, "audio_queue")
+                    while self.input_audio_queue.qsize() > 0: # MARK: AUD OVRLP ISSUE CHK
+                        await self.connection.send_audio_data(self.input_audio_queue.get_nowait())
+                    await self.connection.send_audio_data(audio_frame.data)
+                else:
+                    self.input_audio_queue.put_nowait((audio_frame.data)) # MARK: AUD OVRLP ISSUE CHK
 
                 # Write PCM data if enabled
-                await pcm_writer.write(audio_frame.data)
+                # await pcm_writer.write(audio_frame.data)
 
                 await asyncio.sleep(0)  # Yield control to allow other tasks to run
 
@@ -243,9 +257,9 @@ class RealtimeKitAgent:
                     # logger.info("Received audio message")
                     self.audio_queue.put_nowait(base64.b64decode(message.delta))
                     # loop.call_soon_threadsafe(self.audio_queue.put_nowait, base64.b64decode(message.delta))
-                    logger.debug(f"TMS:ResponseAudioDelta: response_id:{message.response_id},item_id: {message.item_id}")
+                    logger.info(f"TMS:ResponseAudioDelta: response_id:{message.response_id},item_id: {message.item_id}")
                 case ResponseAudioTranscriptDelta():
-                    # logger.info(f"Received text message {message=}")
+                    logger.info(f"TMS:ResponseTranscriptDelta {message.delta}")
                     asyncio.create_task(self.channel.chat.send_message(
                         ChatMessage(
                             message=to_json(message), msg_id=message.item_id
@@ -253,6 +267,7 @@ class RealtimeKitAgent:
                     ))
 
                 case ResponseAudioTranscriptDone():
+                    # so only when the transcription is done, we should send the current Input audio buffer
                     logger.info(f"Text message done: {message=}")
                     asyncio.create_task(self.channel.chat.send_message(
                         ChatMessage(
@@ -260,12 +275,9 @@ class RealtimeKitAgent:
                         )
                     ))
                 case InputAudioBufferSpeechStarted():
-                    await self.channel.clear_sender_audio_buffer()
-                    # clear the audio queue so audio stops playing
-                    while not self.audio_queue.empty():
-                        self.audio_queue.get_nowait()
                     logger.info(f"TMS:InputAudioBufferSpeechStarted: item_id: {message.item_id}")
                 case InputAudioBufferSpeechStopped():
+                    self.is_agent_busy = True
                     logger.info(f"TMS:InputAudioBufferSpeechStopped: item_id: {message.item_id}")
                     pass
                 case ItemInputAudioTranscriptionCompleted():
@@ -285,6 +297,7 @@ class RealtimeKitAgent:
                     pass
                 # ResponseDone
                 case ResponseDone():
+                    self.is_agent_busy = False
                     pass
 
                 # ResponseOutputItemAdded
