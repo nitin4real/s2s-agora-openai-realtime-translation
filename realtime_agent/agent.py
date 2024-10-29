@@ -102,7 +102,7 @@ class RealtimeKitAgent:
                             input_audio_format="pcm16",
                             output_audio_format="pcm16",
                             instructions=inference_config.system_message,
-                            voice=inference_config.voice,
+                            voice= 'echo',
                             model=os.environ.get("OPENAI_MODEL", "gpt-4o-realtime-preview"),
                             modalities=["text", "audio"],
                             temperature=0.8,
@@ -260,11 +260,11 @@ class RealtimeKitAgent:
                     logger.info(f"TMS:ResponseAudioDelta: response_id:{message.response_id},item_id: {message.item_id}")
                 case ResponseAudioTranscriptDelta():
                     logger.info(f"TMS:ResponseTranscriptDelta {message.delta}")
-                    asyncio.create_task(self.channel.chat.send_message(
-                        ChatMessage(
-                            message=to_json(message), msg_id=message.item_id
-                        )
-                    ))
+                    # asyncio.create_task(self.channel.chat.send_message(
+                    #     ChatMessage(
+                    #         message=to_json(message), msg_id=message.item_id
+                    #     )
+                    # ))
 
                 case ResponseAudioTranscriptDone():
                     # so only when the transcription is done, we should send the current Input audio buffer
