@@ -20,31 +20,36 @@ from .utils import PCMWriter
 logger = setup_logger(name=__name__, log_level=logging.INFO)
 
 def _monitor_queue_size(queue: asyncio.Queue, queue_name: str, threshold: int = 5) -> None:
-    queue_size = queue.qsize()
-    if queue_size > threshold:
-        logger.warning(f"Queue {queue_name} size exceeded {threshold}: current size {queue_size}")
+    pass
+    # queue_size = queue.qsize()
+    # if queue_size > threshold:
+    #     logger.warning(f"Queue {queue_name} size exceeded {threshold}: current size {queue_size}")
 
 
 async def wait_for_remote_user(channel: Channel, target_user_id: int) -> int:
     logger.info(f"Waiting for remote user to join, target user: {target_user_id}")
     remote_users = list(channel.remote_users.keys())
+    logger.info(f"Remote users: {remote_users}")
+
     if str(target_user_id) in remote_users:
         logger.info(f"Target user {target_user_id} already joined")
         return str(target_user_id)
 
     future = asyncio.Future[int]()
+#    channel.once("user_joined", lambda conn, user_id: (logger.info(f"User joined: {user_id}, {user_id == target_user_id}, {type(user_id)}, {type(target_user_id)}"), future.set_result(user_id)) if user_id == target_user_id else logger.info(f"User joined: {user_id}"))
+    channel.once("user_joined", lambda conn, user_id: (logger.info(f"User joined: {user_id} {user_id == target_user_id} {type(user_id)} {type(target_user_id)}"), future.set_result(user_id)) if str(user_id) == str(target_user_id) else logger.info(f"Else User joined: {user_id} {user_id == target_user_id} {type(user_id)} {type(target_user_id)}"))
 
-    channel.once("user_joined", lambda conn, user_id: future.set_result(user_id) if user_id == target_user_id else None)
+#    channel.once("user_joined", lambda conn, user_id: future.set_result(user_id) if user_id == target_user_id else None)
 
     try:
         # Wait for the remote user with a timeout of 30 seconds
         remote_user = await asyncio.wait_for(future, timeout=30.0)
-        return remote_user
+        return str(remote_user)
     except KeyboardInterrupt:
         future.cancel()
-        
+
     except Exception as e:
-        logger.error(f"Error waiting for remote user: {e}")
+        logger.error(f"Error waiting for remote user: {e} {target_user_id}")
         raise
 
 
