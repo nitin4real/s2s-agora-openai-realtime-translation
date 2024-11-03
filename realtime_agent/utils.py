@@ -1,6 +1,13 @@
 import asyncio
 import functools
 from datetime import datetime
+import logging
+
+import aiohttp
+
+from .logger import setup_logger
+
+logger = setup_logger(name=__name__, log_level=logging.INFO)
 
 
 def write_pcm_to_file(buffer: bytearray, file_name: str) -> None:
@@ -47,3 +54,11 @@ class PCMWriter:
                 functools.partial(write_pcm_to_file, self.buffer[:], self.file_name),
             )
         self.buffer.clear()
+
+async def notify_user_left_channel(user_id: str, channel_name: str) -> None:
+    async with aiohttp.ClientSession() as session:
+        async with session.post("http://localhost:3013/user_left", json={"user_id": user_id, "channel_name": channel_name}) as response:
+            if response.status == 200:
+                logger.info(f"Successfully notified server about user {user_id} from channel {channel_name} leaving")
+            else:
+                logger.error(f"Failed to notify server about user {user_id} leaving: {response.status}")

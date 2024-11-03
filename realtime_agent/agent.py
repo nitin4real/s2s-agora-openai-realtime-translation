@@ -14,7 +14,7 @@ from .logger import setup_logger
 from .realtime.struct import InputAudioBufferCommitted, InputAudioBufferSpeechStarted, InputAudioBufferSpeechStopped, InputAudioTranscription, ItemCreated, ItemInputAudioTranscriptionCompleted, RateLimitsUpdated, ResponseAudioDelta, ResponseAudioDone, ResponseAudioTranscriptDelta, ResponseAudioTranscriptDone, ResponseContentPartAdded, ResponseContentPartDone, ResponseCreated, ResponseDone, ResponseOutputItemAdded, ResponseOutputItemDone, ServerVADUpdateParams, SessionUpdate, SessionUpdateParams, SessionUpdated, Voices, to_json
 from .realtime.connection import RealtimeApiConnection
 from .tools import ClientToolCallResponse, ToolContext
-from .utils import PCMWriter
+from .utils import PCMWriter, notify_user_left_channel
 
 # Set up the logger with color and timestamp support
 logger = setup_logger(name=__name__, log_level=logging.INFO)
@@ -37,7 +37,7 @@ async def wait_for_remote_user(channel: Channel, target_user_id: int) -> int:
 
     future = asyncio.Future[int]()
 #    channel.once("user_joined", lambda conn, user_id: (logger.info(f"User joined: {user_id}, {user_id == target_user_id}, {type(user_id)}, {type(target_user_id)}"), future.set_result(user_id)) if user_id == target_user_id else logger.info(f"User joined: {user_id}"))
-    channel.once("user_joined", lambda conn, user_id: (logger.info(f"User joined: {user_id} {user_id == target_user_id} {type(user_id)} {type(target_user_id)}"), future.set_result(user_id)) if str(user_id) == str(target_user_id) else logger.info(f"Else User joined: {user_id} {user_id == target_user_id} {type(user_id)} {type(target_user_id)}"))
+    channel.once("user_joined", lambda conn, user_id: (logger.info(f"Target user {target_user_id} Joined now"), future.set_result(user_id)) if str(user_id) == str(target_user_id) else logger.info(f"Else User joined: {user_id} {user_id == target_user_id} {type(user_id)} {type(target_user_id)}"))
 
 #    channel.once("user_joined", lambda conn, user_id: future.set_result(user_id) if user_id == target_user_id else None)
 
@@ -112,7 +112,7 @@ class RealtimeKitAgent:
                             modalities=["text", "audio"],
                             temperature=0.8,
                             max_response_output_tokens="inf",
-                            input_audio_transcription=InputAudioTranscription(model="whisper-1")
+                            # input_audio_transcription=InputAudioTranscription(model="whisper-1")
                         )
                     )
                 )
@@ -171,6 +171,7 @@ class RealtimeKitAgent:
             ):
                 logger.info(f"User left: {user_id}")
                 if self.subscribe_user == user_id:
+                    await notify_user_left_channel(user_id, self.channel.channelId)
                     self.subscribe_user = None
                     logger.info("Subscribed user left, disconnecting")
                     await self.channel.disconnect()
