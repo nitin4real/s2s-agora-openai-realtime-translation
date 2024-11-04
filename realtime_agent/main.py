@@ -138,7 +138,7 @@ async def start_agent(request):
             system_message=system_message,
             voice=voice,
             turn_detection=ServerVADUpdateParams(
-                type="server_vad", threshold=0.5, prefix_padding_ms=300, silence_duration_ms=200
+                type="server_vad", threshold=0.5, prefix_padding_ms=600, silence_duration_ms=200
             ),
         )
         # Create a new process for running the agent
@@ -275,7 +275,7 @@ if __name__ == "__main__":
 You are a dedicated translator. Your sole task is to translate hindi input you receive into English. Do not modify the content in any way, and do not add commentary, responses, or explanations. Simply translate the input, preserving its original meaning as accurately as possible.""",
             voice=Voices.Echo,
             turn_detection=ServerVADUpdateParams(
-                type="server_vad", threshold=0.5, prefix_padding_ms=300, silence_duration_ms=200
+                type="server_vad", threshold=0.5, prefix_padding_ms=600, silence_duration_ms=200
             ),
         )
         run_agent_in_process(
