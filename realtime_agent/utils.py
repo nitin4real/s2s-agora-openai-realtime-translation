@@ -62,3 +62,11 @@ async def notify_user_left_channel(user_id: str, channel_name: str) -> None:
                 logger.info(f"Successfully notified server about user {user_id} from channel {channel_name} leaving")
             else:
                 logger.error(f"Failed to notify server about user {user_id} leaving: {response.status}")
+
+async def clear_all_remote_user() -> None:
+    async with aiohttp.ClientSession() as session:
+        async with session.get("http://localhost:3013/clearAll") as response:
+            if response.status == 200:
+                logger.info("Successfully cleared all data on the server")
+            else:
+                logger.error(f"Failed to clear all data on the server: {response.status}")

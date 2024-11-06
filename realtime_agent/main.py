@@ -9,6 +9,8 @@ from aiohttp import web
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 
+from realtime_agent.utils import clear_all_remote_user
+
 from .realtime.struct import PCM_CHANNELS, PCM_SAMPLE_RATE, ServerVADUpdateParams, Voices
 
 from .agent import InferenceConfig, RealtimeKitAgent
@@ -54,6 +56,9 @@ async def monitor_process(channel_name: str, process: Process):
 
     # Perform any other cleanup or additional actions you need here
     logger.info(f"Cleanup for channel {channel_name} completed")
+
+    if(len(active_processes.keys()) == 0):
+        await clear_all_remote_user()
 
     logger.info(f"Remaining active processes: {len(active_processes.keys())}")
 
