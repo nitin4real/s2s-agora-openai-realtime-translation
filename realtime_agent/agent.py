@@ -11,19 +11,13 @@ from attr import dataclass
 from agora_realtime_ai_api.rtc import Channel, ChatMessage, RtcEngine, RtcOptions
 
 from .logger import setup_logger
-from .realtime.struct import InputAudioBufferCommitted, InputAudioBufferSpeechStarted, InputAudioBufferSpeechStopped, InputAudioTranscription, ItemCreated, ItemInputAudioTranscriptionCompleted, RateLimitsUpdated, ResponseAudioDelta, ResponseAudioDone, ResponseAudioTranscriptDelta, ResponseAudioTranscriptDone, ResponseContentPartAdded, ResponseContentPartDone, ResponseCreated, ResponseDone, ResponseOutputItemAdded, ResponseOutputItemDone, ServerVADUpdateParams, SessionUpdate, SessionUpdateParams, SessionUpdated, Voices, to_json
+from .realtime.struct import FunctionCallOutputItemParam, InputAudioBufferCommitted, InputAudioBufferSpeechStarted, InputAudioBufferSpeechStopped, InputAudioTranscription, ItemCreate, ItemCreated, ItemInputAudioTranscriptionCompleted, RateLimitsUpdated, ResponseAudioDelta, ResponseAudioDone, ResponseAudioTranscriptDelta, ResponseAudioTranscriptDone, ResponseContentPartAdded, ResponseContentPartDone, ResponseCreate, ResponseCreated, ResponseDone, ResponseFunctionCallArgumentsDelta, ResponseFunctionCallArgumentsDone, ResponseOutputItemAdded, ResponseOutputItemDone, ResponseTextDelta, ResponseTextDone, ServerVADUpdateParams, SessionUpdate, SessionUpdateParams, SessionUpdated, Voices, to_json
 from .realtime.connection import RealtimeApiConnection
 from .tools import ClientToolCallResponse, ToolContext
 from .utils import PCMWriter, notify_user_left_channel
 
 # Set up the logger with color and timestamp support
 logger = setup_logger(name=__name__, log_level=logging.INFO)
-
-def _monitor_queue_size(queue: asyncio.Queue, queue_name: str, threshold: int = 5) -> None:
-    pass
-    # queue_size = queue.qsize()
-    # if queue_size > threshold:
-    #     logger.warning(f"Queue {queue_name} size exceeded {threshold}: current size {queue_size}")
 
 
 async def wait_for_remote_user(channel: Channel, target_user_id: int) -> int:
@@ -87,10 +81,10 @@ class RealtimeKitAgent:
         inference_config: InferenceConfig,
         tools: ToolContext | None,
         target_user_id: int,
+        isTranscriber: bool = False,
     ) -> None:
         channel = engine.create_channel(options)
         await channel.connect()
-
         try:
             async with RealtimeApiConnection(
                 base_uri=os.getenv("REALTIME_API_BASE_URI", "wss://api.openai.com"),
@@ -108,9 +102,9 @@ class RealtimeKitAgent:
                             output_audio_format="pcm16",
                             instructions=inference_config.system_message,
                             voice= 'echo',
-                            model=os.environ.get("OPENAI_MODEL", "gpt-4o-realtime-preview"),
-                            modalities=["text", "audio"],
-                            temperature=0.8,
+                            model="gpt-4o-realtime-preview",
+                            modalities=["text"] if isTranscriber else ["audio","text"],
+                            temperature=0.6,
                             max_response_output_tokens="inf",
                             # input_audio_transcription=InputAudioTranscription(model="whisper-1")
                         )
@@ -119,9 +113,9 @@ class RealtimeKitAgent:
 
                 start_session_message = await anext(connection.listen())
                 # assert isinstance(start_session_message, messages.StartSession)
-                logger.info(
-                    f"Session started: {start_session_message.session.id} model: {start_session_message.session.model}"
-                )
+                # logger.info(
+                #     f"Session started: {start_session_message.session.id} model: {start_session_message}"
+                # )
 
                 agent = cls(
                     connection=connection,
@@ -218,7 +212,6 @@ class RealtimeKitAgent:
                 # logger.info(f"Received audio frame")
                 # Process received audio (send to model)
                 if(not self.is_agent_busy):
-                    _monitor_queue_size(self.audio_queue, "audio_queue")
                     while self.input_audio_queue.qsize() > 0: # MARK: AUD OVRLP ISSUE CHK
                         await self.connection.send_audio_data(self.input_audio_queue.get_nowait())
                     await self.connection.send_audio_data(audio_frame.data)
@@ -254,6 +247,21 @@ class RealtimeKitAgent:
             # Write any remaining PCM data before exiting
             await pcm_writer.flush()
             raise  # Re-raise the cancelled exception to properly exit the task
+
+    async def handle_funtion_call(self, message: ResponseFunctionCallArgumentsDone) -> None:
+        function_call_response = await self.tools.execute_tool(message.name, message.arguments)
+        logger.info(f"Function call response: {function_call_response}")
+        await self.connection.send_request(
+            ItemCreate(
+                item = FunctionCallOutputItemParam(
+                    call_id=message.call_id,
+                    output=function_call_response.json_encoded_output
+                )
+            )
+        )
+        await self.connection.send_request(
+            ResponseCreate()
+        )
 
     async def _process_model_messages(self) -> None:
         async for message in self.connection.listen():
@@ -294,6 +302,19 @@ class RealtimeKitAgent:
                         )
                     ))
                 #  InputAudioBufferCommitted
+                case ResponseTextDelta():
+                    logger.info(f"Response Text Delta: {message}")
+                    pass
+
+                case ResponseTextDone():
+                    logger.info(f"Response Text Done: {message}")
+                    asyncio.create_task(self.channel.chat.send_message(
+                        ChatMessage(
+                            message=to_json(message), msg_id=message.item_id
+                        )
+                    ))
+
+                    pass
                 case InputAudioBufferCommitted():
                     pass
                 case ItemCreated():
@@ -303,6 +324,7 @@ class RealtimeKitAgent:
                     pass
                 # ResponseDone
                 case ResponseDone():
+                    logger.info(f"ResponseDone: {message}")
                     self.is_agent_busy = False
                     pass
 
@@ -323,8 +345,21 @@ class RealtimeKitAgent:
                 case ResponseOutputItemDone():
                     pass
                 case SessionUpdated():
+                    logger.info(f"SessionUpdated: {message.event_id}")
+                    asyncio.create_task(self.channel.chat.send_message(
+                        ChatMessage(
+                            message=to_json(message), msg_id=message.event_id
+                        )
+                    ))
+
                     pass
                 case RateLimitsUpdated():
+                    pass
+                case ResponseFunctionCallArgumentsDone():
+                    asyncio.create_task(
+                        self.handle_funtion_call(message)
+                    )
+                case ResponseFunctionCallArgumentsDelta():
                     pass
                 case _:
                     logger.warning(f"Unhandled message {message=}")

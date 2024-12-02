@@ -73,7 +73,8 @@ def run_agent_in_process(
     channel_name: str,
     uid: int,
     inference_config: InferenceConfig,
-    target_user_id: int
+    target_user_id: int,
+    isTranscriber: bool
 ):  # Set up signal forwarding in the child process
     signal.signal(signal.SIGINT, handle_agent_proc_signal)  # Forward SIGINT
     signal.signal(signal.SIGTERM, handle_agent_proc_signal)  # Forward SIGTERM
@@ -89,7 +90,8 @@ def run_agent_in_process(
             ),
             inference_config=inference_config,
             tools=None,
-            target_user_id=target_user_id
+            target_user_id=target_user_id,
+            isTranscriber=isTranscriber
         )
     )
 
@@ -113,6 +115,7 @@ async def start_agent(request):
         system_instruction = validated_data.system_instruction
         voice = validated_data.voice
         target_user_id=validated_data.target_user_id
+        isTranscriber = uid % 100 == int(uid/100)%100
 
         # Check if a process is already running for the given channel_name
         # if (
@@ -149,7 +152,7 @@ async def start_agent(request):
         # Create a new process for running the agent
         process = Process(
             target=run_agent_in_process,
-            args=(app_id, app_cert, channel_name, uid, inference_config, target_user_id),
+            args=(app_id, app_cert, channel_name, uid, inference_config, target_user_id, isTranscriber),
         )
 
         try:
