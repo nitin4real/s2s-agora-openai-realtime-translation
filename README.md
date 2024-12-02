@@ -1,123 +1,93 @@
-# Realtime Agent
 
-This project demonstrates how to deliver ultra-low latency access to OpenAI with exceptional audio quality using Agora's SD-RTN and OpenAI's Realtime API. By integrating Agora's SDK with OpenAI's Realtime API, it ensures seamless performance and minimal delay across the globe.
+---
 
-## Prerequisites
+# Backend Services  
 
-Before running the demo, ensure you have the following installed and configured:
+## **Python Server for Translation Agent Generation**  
 
-- Python 3.11 or above
+### Overview  
 
-- Agora account:
+This Python server leverages the **Agora OpenAI Python SDK** to generate AI agents capable of real-time audio translation. These agents listen to specific users in an Agora RTC channel, translate their speech directly to a target language with ultra-low latency, and stream the translated audio back into the channel.  
 
-  - [Login to Agora](https://console.agora.io/en/)
-  - Create a [New Project](https://console.agora.io/projects), using `Secured mode: APP ID + Token` to obtain an App ID and App Certificate.
+---
 
-- OpenAI account:
+### Instructions  
 
-  - [Login to OpenAI](https://platform.openai.com/signup)
-  - Go to Dashboard and [obtain your API key](https://platform.openai.com/api-keys).
+#### **Setup and Installation**  
 
-- Additional Packages:
+1. **Prepare the Environment**:  
+   - Create a `.env` file for the backend by copying the example file:  
+     ```bash
+     cp .env.example .env
+     ```  
+   - Populate the `.env` file with the necessary values.  
 
-  - On macOS:
-    ```bash
-    brew install ffmpeg portaudio
-    ```
-  - On Ubuntu (verified on versions 22.04 & 24.04):
-    ```bash
-    sudo apt install portaudio19-dev python3-dev build-essential
-    sudo apt install ffmpeg
-    ```
+2. **Obtain Tokens and IDs**:  
+   - **Agora Account**:  
+     - [Log in to Agora](https://console.agora.io/en/).  
+     - Create a [New Project](https://console.agora.io/projects) with `Secured mode: APP ID + Token` to get the **App ID** and **App Certificate**.  
+   - **OpenAI Account**:  
+     - [Log in to OpenAI](https://platform.openai.com/signup).  
+     - Go to the dashboard to [obtain your API key](https://platform.openai.com/api-keys).  
 
-## Network Architecture
-
-<!-- <img src="./architecture.png" alt="architecture" width="700" height="400" /> -->
-<picture>
-  <source srcset="architecture-dark-theme.png" media="(prefers-color-scheme: dark)">
-  <img src="architecture-light-theme.png" alt="Architecture diagram of Conversational Ai by Agora and OpenAi">
-</picture>
-
-## Organization of this Repo
-
-- `realtimeAgent/realtime` contains the Python implementation for interacting with the Realtime API.
-- `realtimeAgent/agent.py` includes a demo agent that leverages the `realtime` module and the [agora-realtime-ai-api](https://pypi.org/project/agora-realtime-ai-api/) package to build a simple application.
-- `realtimeAgent/main.py` provides a web server that allows clients to start and stop AI-driven agents.
-
-## Run the Demo
-
-### Setup and run the backend
-
-1. Create a `.env` file for the backend. Copy `.env.example` to `.env` in the root of the repo and fill in the required values:
-   ```bash
-   cp .env.example .env
-   ```
-1. Create a virtual environment:
+3. **Set Up a Virtual Environment**:  
    ```bash
    python3 -m venv venv && source venv/bin/activate
-   ```
-1. Install the required dependencies:
+   ```  
+
+4. **Install Dependencies**:  
    ```bash
    pip install -r requirements.txt
-   ```
-1. Run the demo agent:
-   ```bash
-   python -m realtime_agent.main agent --channel_name=<channel_name> --uid=<agent_uid>
-   ```
+   ```  
 
-### Start HTTP Server
-
-1. Run the http server to start demo agent via restful service
+5. **Run the Server**:  
    ```bash
    python -m realtime_agent.main server
-   ```
-   The server provides a simple layer for managing agent processes.
+   ```  
 
-### API Resources
+---
 
-- [POST /start](#post-start)
-- [POST /stop](#post-stop)
+### Repository Organization  
 
-### POST /start
+- **`realtimeAgent/realtime`**: Contains the core Python implementation for interacting with the Realtime API.  
+- **`realtimeAgent/agent.py`**: Includes a demo agent built using the `realtime` module and the [Agora-Realtime-AI-API](https://pypi.org/project/agora-realtime-ai-api/).  
+- **`realtimeAgent/main.py`**: Provides the main web server for starting and stopping AI-driven agents.  
 
-This api starts an agent with given graph and override properties. The started agent will join into the specified channel, and subscribe to the uid which your browser/device's rtc use to join.
+This repository is built on top of the **OpenAI Realtime Python SDK**.  
 
-| Param        | Description                                                                                                                                                            |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| channel_name | (string) channel name, it needs to be the same with the one your browser/device joins, agent needs to stay with your browser/device in the same channel to communicate |
-| uid          | (int)the uid which ai agent use to join                                                                                                                                |
-| system_instruction    | The system instruction for the agent                                                                                                                          |
-| voice        | The voice of the agent                                                                                                                                                 |
+---
 
-Example:
+### Endpoints  
 
-```bash
-curl 'http://localhost:8080/start_agent' \
-  -H 'Content-Type: application/json' \
-  --data-raw '{
-    "channel_name": "test",
-    "uid": 123
-  }'
-```
+#### **1. `/start_agent`**  
+**Body Parameters**:  
+- `channel_name` (string): The Agora RTC channel name.  
+- `uid` (int): The 8-digit UID of the agent.  
+- `target_user_id` (int): The 4-digit UID of the user the agent will listen to.  
+- `system_instruction` (string): Instructions to configure the agent as an interpreter.  
 
-### POST /stop
+**Functionality**:  
+- Creates an **OpenAI agent session** with the provided instructions.  
+- Connects the agent to the specified Agora RTC channel using the given channel name and UID.  
+- Subscribes the agent to the specified target user (using `target_user_id`).  
+- The agent listens to the target user’s audio in real-time, translates it directly to the target language via the OpenAI Realtime WSS connection, and streams the translated audio back into the channel using Agora RTC with ultra-low latency.  
 
-This api stops the agent you started
+**Notes**:  
+- Adjust the agent’s **Voice Activity Detection (VAD)** settings in `main.py` to modify silence duration thresholds.  
 
-| Param        | Description                                                |
-| ------------ | ---------------------------------------------------------- |
-| channel_name | (string) channel name, the one you used to start the agent |
+---
 
-Example:
+### Key Features  
 
-```bash
-curl 'http://localhost:8080/stop_agent' \
-  -H 'Content-Type: application/json' \
-  --data-raw '{
-    "channel_name": "test"
-  }'
-```
+- **Low Latency Translation**: The agent translates audio directly to the target language, bypassing intermediate audio-to-text conversion for minimal delay.  
+- **Real-Time Streaming**: Translated audio is streamed back to the Agora RTC channel with ultra-low latency.  
+- **Configurable VAD**: Silence duration thresholds can be adjusted for better control of speech detection.  
 
-### Front-End for Testing
+---
 
-To test agents, use Agora's [Voice Call Demo](https://webdemo.agora.io/basicVoiceCall/index.html).
+### Related Repositories  
+
+- **Node.js Service**: Manages token generation and AI agent coordination. [Add link]  
+- **Frontend**: Provides the user interface for the meeting scenario. [Add link]  
+
+---
