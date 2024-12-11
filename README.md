@@ -1,7 +1,7 @@
 
 ---
 
-# Backend Services  
+# Interpreter Generator  
 
 ## **Python Server for Translation Agent Generation**  
 
@@ -87,7 +87,7 @@ This repository is built on top of the **OpenAI Realtime Python SDK**.
 
 ### Related Repositories  
 
-- **Node.js Service**: Manages token generation and AI agent coordination. [Add link]  
-- **Frontend**: Provides the user interface for the meeting scenario. [Add link]  
+- **Node.js Service**: Manages token generation and AI agent coordination. [Repository Link](https://github.com/nitin4real/agora-backend)
+- **Frontend**: Provides the user interface for the meeting scenario. [Repository Link](https://github.com/nitin4real/react-video-call-project)  
 
 ---
