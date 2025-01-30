@@ -271,15 +271,16 @@ class RealtimeKitAgent:
                     # logger.info("Received audio message")
                     self.audio_queue.put_nowait(base64.b64decode(message.delta))
                     # loop.call_soon_threadsafe(self.audio_queue.put_nowait, base64.b64decode(message.delta))
-                    logger.info(f"TMS:ResponseAudioDelta: response_id:{message.response_id},item_id: {message.item_id}")
+                    # logger.info(f"TMS:ResponseAudioDelta: response_id:{message.response_id},item_id: {message.item_id}")
+                    pass
                 case ResponseAudioTranscriptDelta():
-                    logger.info(f"TMS:ResponseTranscriptDelta {message.delta}")
+                    # logger.info(f"TMS:ResponseTranscriptDelta {message.delta}")
                     # asyncio.create_task(self.channel.chat.send_message(
                     #     ChatMessage(
                     #         message=to_json(message), msg_id=message.item_id
                     #     )
                     # ))
-
+                    pass
                 case ResponseAudioTranscriptDone():
                     # so only when the transcription is done, we should send the current Input audio buffer
                     logger.info(f"Text message done: {message=}")
@@ -303,7 +304,7 @@ class RealtimeKitAgent:
                     ))
                 #  InputAudioBufferCommitted
                 case ResponseTextDelta():
-                    logger.info(f"Response Text Delta: {message}")
+                    # logger.info(f"Response Text Delta: {message}")
                     pass
 
                 case ResponseTextDone():
