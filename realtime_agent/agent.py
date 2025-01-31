@@ -24,6 +24,7 @@ async def wait_for_remote_user(channel: Channel, target_user_id: int) -> int:
     logger.info(f"Waiting for remote user to join, target user: {target_user_id}")
     remote_users = list(channel.remote_users.keys())
     logger.info(f"Remote users: {remote_users}")
+    isConnected = False
 
     if str(target_user_id) in remote_users:
         logger.info(f"Target user {target_user_id} already joined")
@@ -31,13 +32,13 @@ async def wait_for_remote_user(channel: Channel, target_user_id: int) -> int:
 
     future = asyncio.Future[int]()
 #    channel.once("user_joined", lambda conn, user_id: (logger.info(f"User joined: {user_id}, {user_id == target_user_id}, {type(user_id)}, {type(target_user_id)}"), future.set_result(user_id)) if user_id == target_user_id else logger.info(f"User joined: {user_id}"))
-    channel.once("user_joined", lambda conn, user_id: (logger.info(f"Target user {target_user_id} Joined now"), future.set_result(user_id)) if str(user_id) == str(target_user_id) else logger.info(f"Else User joined: {user_id} {user_id == target_user_id} {type(user_id)} {type(target_user_id)}"))
+    channel.on("user_joined", lambda conn, user_id: (logger.info(f"Target user {target_user_id} Joined now"), future.set_result(user_id)) if (str(user_id) == str(target_user_id) and not isConnected)  else logger.info(f"Else User joined: {user_id} {user_id == target_user_id} {type(user_id)} {type(target_user_id)}"))
 
-#    channel.once("user_joined", lambda conn, user_id: future.set_result(user_id) if user_id == target_user_id else None)
 
     try:
         # Wait for the remote user with a timeout of 30 seconds
         remote_user = await asyncio.wait_for(future, timeout=30.0)
+        isConnected = True
         return str(remote_user)
     except KeyboardInterrupt:
         future.cancel()
