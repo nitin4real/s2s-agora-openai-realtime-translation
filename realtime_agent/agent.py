@@ -102,7 +102,7 @@ class RealtimeKitAgent:
                             input_audio_format="pcm16",
                             output_audio_format="pcm16",
                             instructions=inference_config.system_message,
-                            voice= 'echo',
+                            voice= inference_config.voice,
                             model="gpt-4o-realtime-preview",
                             modalities=["text"] if isTranscriber else ["audio","text"],
                             temperature=0.6,
